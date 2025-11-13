@@ -306,23 +306,33 @@ class CWTransmitter {
     if (!this.audioContext || !this.soundEnabled) return;
 
     return new Promise((resolve) => {
-        const osc = this.audioContext.createOscillator();
-        const gain = this.audioContext.createGain();
+        const osc   = this.audioContext.createOscillator();
+        const gain  = this.audioContext.createGain();
+        const filter = this.audioContext.createBiquadFilter(); // ← 新增
 
-        osc.connect(gain);
-        gain.connect(this.audioContext.destination);
+        // ① 方波源
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(600, this.audioContext.currentTime);
 
-        // 保证所有参数都是有限数字
+        // ② 低通滤波：截止频率 1 kHz，Q 值 0.7（柔和滚降）
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(1000, this.audioContext.currentTime);
+        filter.Q.setValueAtTime(0.7, this.audioContext.currentTime);
+
+        // ③ 2 ms 淡入/淡出，消除爆音
         const vol   = Number(this.volume) || 0.7;
         const time  = Number(this.audioContext.currentTime) || 0;
         const dur   = Number(duration) || 100;
 
-        osc.frequency.setValueAtTime(800, time);
-        osc.type = 'sine';
-
         gain.gain.setValueAtTime(0, time);
-        gain.gain.linearRampToValueAtTime(vol * 0.1, time + 0.01);
-        gain.gain.linearRampToValueAtTime(0, time + dur / 1000 - 0.01);
+        gain.gain.linearRampToValueAtTime(vol * 0.1, time + 0.002);
+        gain.gain.setValueAtTime(vol * 0.1, time + dur / 1000 - 0.002);
+        gain.gain.linearRampToValueAtTime(0, time + dur / 1000);
+
+        // ④ 连接顺序：osc → filter → gain → 扬声器
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.audioContext.destination);
 
         osc.start(time);
         osc.stop(time + dur / 1000);
@@ -849,6 +859,38 @@ class CWTransmitter {
         this.saveSettings();
     }
 }
+
+// ========== 短波频谱动画 ==========
+function startShortwaveSpectrum() {
+    const spectrum = document.getElementById('spectrumDisplay');
+    if (!spectrum) return;
+    const barCount = 50;
+    const bars = [];
+
+    // 创建竖线
+    for (let i = 0; i < barCount; i++) {
+        const bar = document.createElement('div');
+        bar.className = 'spectrum-bar';
+        bar.style.left = `${(i / (barCount - 1)) * 100}%`;
+        spectrum.appendChild(bar);
+        bars.push(bar);
+    }
+
+    // 动画循环
+    function animate() {
+        bars.forEach((bar, idx) => {
+            // 高度：随机 5~95%
+            const h = 20 - Math.random() * 15;
+            bar.style.height = `${h}%`;
+
+        });
+        requestAnimationFrame(animate);
+    }
+    animate();
+}
+
+// 页面加载后启动
+document.addEventListener('DOMContentLoaded', () => startShortwaveSpectrum());
 
 // 初始化
 document.addEventListener('DOMContentLoaded', function() {

@@ -118,14 +118,14 @@
         }
         
         .dot-symbol {
-            width: 2px;
+            width: 8px;
             height: 10px;
             background: var(--amber-orange);
             box-shadow: 0 0 10px var(--amber-orange);
         }
         
         .dash-symbol {
-            width: 2px;
+            width: 8px;
             height: 20px;
             background: #e69500;
             box-shadow: 0 0 10px #e69500;
@@ -362,6 +362,30 @@
                 }
             }
         }
+        /* 频谱竖线 */
+        .spectrum-bar {
+            position: absolute;
+            bottom: 0;
+            width: 5px;
+            background: linear-gradient(to top, #ff9d00 0%, #00fbff 50%, #ffffff 100%);
+            box-shadow: 0 0 4px #00ff00, 0 0 8px #00ff00;
+            transition: height 0.08s ease-out;
+        }
+        /* 余辉淡出 */
+        .spectrum-bar::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #00ff00;
+            opacity: 0.6;
+            animation: afterglow 0.5s ease-out forwards;
+        }
+        @keyframes afterglow {
+            to { opacity: 0; transform: translateY(-10px); }
+        }
     </style>
 </head>
 <body>
@@ -370,7 +394,7 @@
         <!-- 标题区域 -->
         <div class="text-center mb-8">
             <h1 class="title-font text-4xl md:text-5xl font-bold mb-4 text-white">
-                CW 发报器
+                CW 发报训练 - CW Trainer
             </h1>
             <p class="text-lg opacity-80 mb-4">摩尔斯电码训练工具 - v3.2</p>
             <div class="flex items-center justify-center">
@@ -381,6 +405,41 @@
 
         <!-- 主要功能区域 -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+
+            <!-- 独立难度面板 -->
+            <div class="panel-bg p-4 mb-8">
+                <h3 class="title-font text-lg font-bold mb-3 text-white">难度选择</h3>
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-gray-400">单字符/短语/长句</span>
+                    <div class="flex space-x-2">
+                        <button class="difficulty-button difficulty-easy active" id="easyBtn">初级</button>
+                        <button class="difficulty-button difficulty-medium inactive" id="mediumBtn">中级</button>
+                        <button class="difficulty-button difficulty-hard inactive" id="hardBtn">高级</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 设置面板 -->
+            <div class="panel-bg p-6 mb-8">
+                <h3 class="title-font text-xl font-bold mb-4 text-white">设置</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div>
+                        <label class="block text-sm font-medium mb-2 text-gray-300">音效开关</label>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="soundToggle" class="sr-only peer" checked>
+                            <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                        </label>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2 text-gray-300">视觉效果</label>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="visualToggle" class="sr-only peer" checked>
+                            <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                        </label>
+                    </div>
+                </div>
+            </div> 
+
             <!-- 发送器模块 -->
             <div class="panel-bg p-6">
                 <div class="flex items-center justify-between mb-6">
@@ -545,46 +604,12 @@
                         </div>
                     </div>
                 </div>
-            </div>
-            
-            <!-- 独立难度面板 -->
-            <div class="panel-bg p-4 mb-8">
-                <h3 class="title-font text-lg font-bold mb-3 text-white">难度选择</h3>
-                <div class="flex items-center justify-between">
-                    <span class="text-sm text-gray-400">单字符/短语/长句</span>
-                    <div class="flex space-x-2">
-                        <button class="difficulty-button difficulty-easy active" id="easyBtn">初级</button>
-                        <button class="difficulty-button difficulty-medium inactive" id="mediumBtn">中级</button>
-                        <button class="difficulty-button difficulty-hard inactive" id="hardBtn">高级</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- 设置面板 -->
-        <div class="panel-bg p-6 mb-8">
-            <h3 class="title-font text-xl font-bold mb-4 text-white">设置</h3>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div>
-                    <label class="block text-sm font-medium mb-2 text-gray-300">音效开关</label>
-                    <label class="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" id="soundToggle" class="sr-only peer" checked>
-                        <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
-                    </label>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium mb-2 text-gray-300">视觉效果</label>
-                    <label class="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" id="visualToggle" class="sr-only peer" checked>
-                        <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
-                    </label>
-                </div>
-            </div>
+            </div>             
         </div>
 
         <!-- 页脚 -->
         <footer class="text-center py-8 opacity-60">
-            <p class="text-sm">© 2025 CW发报训练器 | BG7KMT</p>
+            <p class="text-sm">© 2025 CW发报训练器 | BG7KMT BG7KOD BI7KHI</p>
         </footer>
     </div>
 
