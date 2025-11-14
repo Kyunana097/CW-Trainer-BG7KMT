@@ -95,6 +95,7 @@
             display: flex;
             align-items: flex-end;
             justify-content: center;
+
         }
         
         .spectrum-grid {
@@ -107,6 +108,7 @@
                 linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px),
                 linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px);
             background-size: 20px 20px;
+            pointer-events: none; /* 不让它们挡住点击 */
             opacity: 0.3;
         }
         
@@ -349,6 +351,7 @@
             
             .spectrum-display {
                 height: 150px;
+                position: relative;       
             }
             
             @keyframes floatUp {
@@ -366,7 +369,7 @@
         .spectrum-bar {
             position: absolute;
             bottom: 0;
-            width: 5px;
+            width: 4px;
             background: linear-gradient(to top, #ff9d00 0%, #00fbff 50%, #ffffff 100%);
             box-shadow: 0 0 4px #00ff00, 0 0 8px #00ff00;
             transition: height 0.08s ease-out;
@@ -386,6 +389,50 @@
         @keyframes afterglow {
             to { opacity: 0; transform: translateY(-10px); }
         }
+
+        /* ===== 上半部分 ===== */
+        .spectrum-top{
+            height:100px;
+            background:linear-gradient(180deg,#0a0a0a 0%,#1a1a1a 100%);
+            border:2px solid #444;
+            border-bottom:none;
+            border-radius:8px 8px 0 0;
+            position:relative;
+            overflow:hidden;
+        }
+        .top-bars{
+            position:absolute;
+            bottom:4px; left:50%;
+            transform:translateX(-50%);
+            display:flex; gap:2px; align-items:flex-end;
+        }
+        .spectrum-top .cw-response-bar{
+            width:4px; height:5%;
+            background:linear-gradient(to top, #ff9d00 0%, #00fbff 50%, #fff 100%);
+            box-shadow:0 0 4px #00ff00,0 0 8px #00ff00;
+            transition:height .4s ease-out;
+        }
+
+        /* ===== 下半部分 ===== */
+        .spectrum-bottom{
+            height:100px;
+            background:linear-gradient(180deg,#1a1a1a 0%,#0a0a0a 100%);
+            border:2px solid #444;
+            border-top:none;
+            border-radius:0 0 8px 8px;
+            position:relative;
+            overflow:hidden;
+        }
+        /* 点划符号从上往下 */
+        @keyframes floatDown{
+            0%   { top:0; opacity:1; }
+            100% { top:100px; opacity:0; }
+        }
+        .spectrum-bottom .morse-symbol{
+            position:absolute; top:0;
+            animation:floatDown 2s ease-out forwards;
+        }
+
     </style>
 </head>
 <body>
@@ -469,12 +516,16 @@
                     </div>
                 </div>
                 
-                <!-- 频谱图显示区域 -->
-                <div class="spectrum-display mb-6" id="spectrumDisplay">
-                    <div class="spectrum-grid"></div>
-                    <div class="absolute inset-0 flex items-center justify-center text-gray-500" id="spectrumPlaceholder">
-                        点击按钮开始发送
-                    </div>
+                <!-- 上半部分：频谱柱（发射时隐藏） -->
+                <div id="spectrumTop" class="spectrum-top">
+                </div>
+
+                <!-- 下半部分：点划动画（从上往下） -->
+                <div id="spectrumBottom" class="spectrum-bottom">
+                <div class="spectrum-grid"></div>
+                <div id="spectrumPlaceholder" class="absolute inset-0 flex items-center justify-center text-gray-500">
+                    点击按钮开始发送
+                </div>
                 </div>
                 
                 <!-- 发送按钮区域 -->

@@ -269,29 +269,33 @@ class CWTransmitter {
     }
     
     addToSpectrum(symbol, type) {
-        const spectrum = document.getElementById('spectrumDisplay');
+        const topSpectrum = document.getElementById('spectrumTop');
+        const bottomSpectrum = document.getElementById('spectrumBottom');
         const placeholder = document.getElementById('spectrumPlaceholder');
-        
-        if (!spectrum) return;
-        
-        if (placeholder) {
-            placeholder.style.display = 'none';
-        }
-        
-        const symbolElement = document.createElement('div');
-        symbolElement.className = `morse-symbol ${type}-symbol`;
-        
-        // 居中显示
-        const leftPosition = spectrum.offsetWidth / 2 - 1;
-        symbolElement.style.left = `${leftPosition}px`;
-        
-        spectrum.appendChild(symbolElement);
-        
-        // 2秒后移除
+
+        /* 1. 底噪竖线瞬间隐身（外框保持） */
+        const bars = topSpectrum.querySelectorAll('.spectrum-bar');
+        bars.forEach(b => {
+            b.style.height  = '0px';   // 零高
+            b.style.opacity = '0';     // 透明
+        });
+
+        /* 2. 隐藏占位文字 */
+        if (placeholder) placeholder.style.display = 'none';
+
+        /* 3. 点划符号从上往下掉 */
+        const symbolEl = document.createElement('div');
+        symbolEl.className = `morse-symbol ${type}-symbol`;
+        symbolEl.style.left = (bottomSpectrum.offsetWidth - 8) / 2 + 'px';
+        bottomSpectrum.appendChild(symbolEl);
+        setTimeout(() => symbolEl.remove(), 2000);
+
+        /* 4. 800ms 后恢复底噪 */
         setTimeout(() => {
-            if (symbolElement.parentNode) {
-                symbolElement.parentNode.removeChild(symbolElement);
-            }
+            bars.forEach(b => {
+                b.style.height  = '';   // 回到 CSS 默认随机高
+                b.style.opacity = '1';
+            });
         }, 2000);
     }
     
@@ -787,7 +791,6 @@ class CWTransmitter {
     // 数据持久化
     saveSettings() {
         const settings = {
-            currentSpeedMode: this.currentSpeedMode,
             currentSpeed: this.currentSpeed,
             frequency: this.frequency,
             volume: this.volume * 100,
@@ -802,10 +805,17 @@ class CWTransmitter {
     
     loadSettings() {
         const saved = localStorage.getItem('cwTransmitterSettings');
+        if (!saved) {
+            // 首次访问 → 强制学习速度 + 保存
+            this.currentSpeedMode = 'learning';
+            this.currentSpeed      = 15;
+            this.saveSettings();   // 立即写回，下次不再强制
+            return;
+        }
         if (saved) {
             try {
                 const settings = JSON.parse(saved);
-                this.currentSpeedMode = settings.currentSpeedMode || 'learning';
+                this.currentSpeedMode = 'learning';
                 this.currentSpeed = settings.currentSpeed || 15;
                 this.frequency = settings.frequency || 800;
                 this.volume = (settings.volume || 70) / 100;
@@ -858,39 +868,31 @@ class CWTransmitter {
         
         this.saveSettings();
     }
-}
+}   
 
-// ========== 短波频谱动画 ==========
+// ========== 短波底噪频谱 ==========
 function startShortwaveSpectrum() {
-    const spectrum = document.getElementById('spectrumDisplay');
+    const spectrum = document.getElementById('spectrumTop'); // 注意改成上半容器
     if (!spectrum) return;
-    const barCount = 50;
-    const bars = [];
-
-    // 创建竖线
+    const barCount = window.innerWidth < 768 ? 30 : 60;   // 响应密度
     for (let i = 0; i < barCount; i++) {
         const bar = document.createElement('div');
         bar.className = 'spectrum-bar';
         bar.style.left = `${(i / (barCount - 1)) * 100}%`;
         spectrum.appendChild(bar);
-        bars.push(bar);
     }
 
-    // 动画循环
     function animate() {
-        bars.forEach((bar, idx) => {
-            // 高度：随机 5~95%
-            const h = 20 - Math.random() * 15;
-            bar.style.height = `${h}%`;
-
+        const bars = spectrum.querySelectorAll('.spectrum-bar');
+        bars.forEach(b => {
+            // 底噪高度 5~45 %
+            const h = 5 + Math.random() * 40;
+            b.style.height = `${h}%`;
         });
         requestAnimationFrame(animate);
     }
     animate();
 }
-
-// 页面加载后启动
-document.addEventListener('DOMContentLoaded', () => startShortwaveSpectrum());
 
 // 初始化
 document.addEventListener('DOMContentLoaded', function() {
@@ -904,4 +906,5 @@ document.addEventListener('DOMContentLoaded', function() {
         console.error('Web Audio API 不支持');
         alert('您的浏览器不支持Web Audio API，音频功能将无法使用。');
     }
+    startShortwaveSpectrum();
 });
