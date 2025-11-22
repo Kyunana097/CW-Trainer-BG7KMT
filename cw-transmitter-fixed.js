@@ -14,7 +14,8 @@ class CWTransmitter {
             ':': '---...', ';': '-.-.-.', '=': '-...-', '+': '.-.-.', '-': '-....-',
             '_': '..--.-', '"': '.-..-.', '$': '...-..-', '@': '.--.-.', ' ': '/'
         };
-        
+        this.dropMs = 1200;   // 默认“入门”速度下的下落时间
+        this.dropDuration = 600;   // ms，默认 15 WPM 时的下落时间
         this.reverseMorseMap = {};
         for (let char in this.morseCodeMap) {
             this.reverseMorseMap[this.morseCodeMap[char]] = char;
@@ -60,9 +61,12 @@ class CWTransmitter {
         
         // 历史记录
         this.history = [];
-        
-        // 延迟初始化以确保DOM完全加载
-        setTimeout(() => this.init(), 100);
+
+        // 放在 constructor 末尾
+        setTimeout(() => {
+            this.initForegroundBars();   // ← 新增
+            this.init();
+        }, 100);
     }    
     
     // ✅ 新增辅助函数
@@ -112,7 +116,9 @@ class CWTransmitter {
             });
         });
         
-        const words = ['HELLO', 'RADIO', 'WORLD', 'CALL', 'NAME'];
+        const words = ['HELLO', 'RADIO', 'WORLD', 'CALL', 'NAME','CQ','DE',
+            '73','88','TNX', 'PSE', 'OM', 'YL', 'SK', 'DX', 'FB', 'GL','QTH',
+            '73S', '88S', 'ES', 'SHORTWAVE', 'THANKS', 'PLEASE', 'COPY',];
         words.forEach(word => {
             questions.push({
                 type: 'word',
@@ -128,10 +134,24 @@ class CWTransmitter {
     
     generateHardQuestions() {
         const questions = [];
-        const sentences = [
-            'CQ CQ CQ DE BG2XXX K',
-            'MY NAME IS ZHANG',
-            'QTH IS BEIJING CHINA'
+        const sentences = [ '73 DE', 'CU AGN', '73 GL', '88 FB', 'PSE QSL',
+            'OM SK', 'YL TNX', 'DX FB', 'CQ DX', 'DE OM', 'QTH IS', 'MY NAME',
+            'HAM RADIO', 'MORSE CODE','PLEASE RESPOND',
+            '73 ES 88', 'CQ DE', 'DX DX', 'FB FB', 'GL GL', 'SK SK',
+            'TNX TNX', 'PSE PSE', 'QSL QSL', 'QTH QTHS', 'MY NAME IS',
+            'GOOD LUCK', 'BEST REGARDS', 'SEE YOU', 'THANK YOU', 'PLEASE COPY',
+            '73 AND 88', 'CQ CQ CQ', 'DE YL', 'DX IS', 'FB OM', 'GL YL',
+            'SK OM', 'TNX FB', 'PSE DE', 'QSL VIA', 'QTH QTH', 'MY QTH',
+            'CALL ME', 'RADIO CLUB', 'HAM OPERATOR', 'MORSE OPERATOR',
+            'GOOD DAY', 'BEST WISHES', 'SEE U',
+            'CALL SIGN', 'RADIO OPERATOR',
+            'CQ CQ CQ DE BG7KMT K',
+            'MY NAME IS ZHUANG',
+            'QTH IS GUANGDONG CHINA',
+            'PLEASE QSL VIA BUREAU',
+            'THANKS FOR YOUR CALL',
+            '73 AND BEST REGARDS',
+            'SEE YOU NEXT TIME',
         ];
         
         sentences.forEach(sentence => {
@@ -268,35 +288,92 @@ class CWTransmitter {
         this.showStatus('正在发送...', 'sending');
     }
     
-    addToSpectrum(symbol, type) {
-        const topSpectrum = document.getElementById('spectrumTop');
-        const bottomSpectrum = document.getElementById('spectrumBottom');
-        const placeholder = document.getElementById('spectrumPlaceholder');
+    /* 创建前景 8 根柱子 */
+    initForegroundBars() {
+        const fg = document.querySelector('.cluster-8');
+        fg.innerHTML = '';
+        // 尝试根据底噪柱数量创建相同数量的前景柱，保持一一对应
+        const bg = document.getElementById('spectrumBg');
+        const bgBars = bg ? bg.querySelectorAll('.spectrum-bar') : null;
+        if (!bgBars || bgBars.length === 0) {
+            // 如果底噪尚未创建，稍后重试
+            setTimeout(() => this.initForegroundBars(), 50);
+            return;
+        }
 
-        /* 1. 底噪竖线瞬间隐身（外框保持） */
-        const bars = topSpectrum.querySelectorAll('.spectrum-bar');
-        bars.forEach(b => {
-            b.style.height  = '0px';   // 零高
-            b.style.opacity = '0';     // 透明
+        bgBars.forEach((bb, i) => {
+            const bar = document.createElement('div');
+            bar.className = 'fg-bar';
+            // 把每根前景柱放在与底噪同样的 left 位置
+            const left = bb.style.left || bb.getAttribute('data-left') || `${(i / (bgBars.length - 1)) * 100}%`;
+            bar.style.left = left;
+            bar.style.transform = 'translateX(-50%)';
+            // 初始高度取底噪附近的小值
+            const h = 4 + Math.random() * 4;
+            bar.style.height = `${h}%`;
+            bar.dataset.h = String(h); // 当前高度
+            bar.dataset.base = String(h); // 基线高度
+            bar.dataset.target = String(h); // 目标高度（动画用）
+            bar.dataset.index = String(i);
+            fg.appendChild(bar);
         });
+    }
+
+    /* 按键时只动前景层 */
+    raiseForegroundBars(type = 'dot') {
+        const bars = Array.from(document.querySelectorAll('.fg-bar'));
+        if (bars.length === 0) return;
+        const total = bars.length;
+        // 中心索引（默认居中触发）
+        const center = Math.floor(total / 2);
+        // 山峰分布参数（sigma 控制宽度） — 减小 sigma 使峰更陡峭
+        const sigma = Math.max(0.6, total / 20);
+        const maxH = 80; // 峰值高度（%）
+        // 根据类型设置回落系数：点（dot）回落更快 -> decay 更小；划（dash）回落更慢 -> decay 更接近 1
+        const decayForType = type === 'dot' ? 0.84 : 0.96;
+        // 为每根柱子计算高斯形目标高度
+        bars.forEach((b, i) => {
+            const x = i - center;
+            // 高斯函数 A * exp(-(x^2)/(2*sigma^2))
+            const peak = maxH * Math.exp(-(x * x) / (2 * sigma * sigma));
+            const base = parseFloat(b.dataset.base || '4');
+            const target = Math.max(base, peak);
+            b.dataset.target = String(target);
+            // 回落系数由类型控制，存储在 dataset 中供 animate() 使用
+            b.dataset.decay = String(decayForType);
+            // 立即显示为目标（速升），class 控制视觉效果
+            b.classList.add('show');
+        });
+    }
+
+    lowerForegroundBars() {
+        document.querySelectorAll('.fg-bar').forEach(b => {
+            const base = parseFloat(b.dataset.base || '4');
+            b.dataset.target = String(base);
+        });
+    }
+
+    addToSpectrum(symbol, type) {
+        const bottomSpectrum = document.getElementById('spectrumBottom');
+        const placeholder    = document.getElementById('spectrumPlaceholder');
+
+        /* 1. 只拉高前景8根，底噪继续刷新 */
+        // 根据类型触发前景柱（type: 'dot' 或 'dash'）
+        this.raiseForegroundBars(type);
+        // 点回落更快，划回落慢一点
+        const lowerDelay = type === 'dot' ? 200 : 800;
+        setTimeout(() => this.lowerForegroundBars(), lowerDelay);
 
         /* 2. 隐藏占位文字 */
         if (placeholder) placeholder.style.display = 'none';
 
-        /* 3. 点划符号从上往下掉 */
+        /* 3. 下落橙条速度随WPM，不清旧条 */
         const symbolEl = document.createElement('div');
         symbolEl.className = `morse-symbol ${type}-symbol`;
         symbolEl.style.left = (bottomSpectrum.offsetWidth - 8) / 2 + 'px';
+        symbolEl.style.animation = `floatDown ${this.dropMs}ms ease-out forwards`;
         bottomSpectrum.appendChild(symbolEl);
-        setTimeout(() => symbolEl.remove(), 2000);
-
-        /* 4. 800ms 后恢复底噪 */
-        setTimeout(() => {
-            bars.forEach(b => {
-                b.style.height  = '';   // 回到 CSS 默认随机高
-                b.style.opacity = '1';
-            });
-        }, 2000);
+        setTimeout(() => symbolEl.remove(), this.dropMs);
     }
     
     playSymbolSound(symbol) {
@@ -417,6 +494,7 @@ class CWTransmitter {
     setSpeedMode(mode) {
         this.currentSpeedMode = mode;
         this.characterInterval = this.speedModes[mode].interval;
+        this.dropMs = this.characterInterval;   // ← 直接拿档位间隔
         
         this.updateSpeedModeUI();
         
@@ -525,6 +603,7 @@ class CWTransmitter {
     // 接收功能
     updateSpeed(value) {
         this.currentSpeed = parseInt(value);
+        this.dropDuration = Math.round(9000 / this.currentSpeed);   
         const speedDisplay = document.getElementById('speedDisplay');
         if (speedDisplay) {
             speedDisplay.textContent = `${value} WPM`;
@@ -870,28 +949,68 @@ class CWTransmitter {
     }
 }   
 
-// ========== 短波底噪频谱 ==========
 function startShortwaveSpectrum() {
-    const spectrum = document.getElementById('spectrumTop'); // 注意改成上半容器
-    if (!spectrum) return;
-    const barCount = window.innerWidth < 768 ? 30 : 60;   // 响应密度
+    const bg = document.getElementById('spectrumBg');
+    if (!bg) return;                       // 容器不存在就退出
+
+    const barCount = window.innerWidth < 768 ? 30 : 60;
     for (let i = 0; i < barCount; i++) {
         const bar = document.createElement('div');
         bar.className = 'spectrum-bar';
         bar.style.left = `${(i / (barCount - 1)) * 100}%`;
-        spectrum.appendChild(bar);
+        bar.style.transform = 'translateX(-50%)';
+        // 初始高度较低，使用 dataset 存储当前高度用于平滑动画
+        const init = 5 + Math.random() * 6; // 5% ~ 11% 低噪声
+        bar.style.height = `${init}%`;
+        bar.dataset.h = String(init);
+        bg.appendChild(bar);
     }
+}
 
-    function animate() {
-        const bars = spectrum.querySelectorAll('.spectrum-bar');
-        bars.forEach(b => {
-            // 底噪高度 5~45 %
-            const h = 5 + Math.random() * 40;
-            b.style.height = `${h}%`;
+function animate() {
+    const bg = document.getElementById('spectrumBg');
+    if (!bg) return;
+    const bars = bg.querySelectorAll('.spectrum-bar');
+    if (bars.length === 0) return;
+    bars.forEach(b => {
+        // 目标高度：基线附近小幅随机抖动（降低噪声幅度）
+        const base = 4; // 基线高度 4%
+        const variance = 6; // 波动 +/-6%
+        const target = base + Math.random() * variance;
+        const current = parseFloat(b.dataset.h || b.style.height.replace('%','')) || base;
+        // 平滑插值向目标靠近
+        const next = current + (target - current) * 0.08;
+        b.style.height = `${next.toFixed(2)}%`;
+        b.dataset.h = String(next);
+    });
+    // 前景柱：实现速升缓降和山峰分布的衰减
+    const fg = document.querySelectorAll('.cluster-8 .fg-bar');
+    if (fg && fg.length) {
+        fg.forEach(f => {
+            const base = parseFloat(f.dataset.base || '4');
+            const target = parseFloat(f.dataset.target || String(base));
+            const current = parseFloat(f.dataset.h || f.style.height.replace('%','')) || base;
+            let nextF = current;
+            if (current < target) {
+                // 速升：如果目标高于当前，立即跳升接近目标（快速攻击）
+                nextF = target;
+            } else if (current > target) {
+                // 缓降：慢慢衰减到目标（缓慢释放）
+                // 支持每柱自定义 decay（dataset.decay），点/划会在 raiseForegroundBars 设置此值
+                const decay = parseFloat(f.dataset.decay) || 0.92; // 每帧保留比例，靠近 1 更慢
+                nextF = current * decay + target * (1 - decay);
+                // 防止长时间残留极小差值
+                if (Math.abs(nextF - target) < 0.05) nextF = target;
+            }
+            f.style.height = `${nextF.toFixed(2)}%`;
+            f.dataset.h = String(nextF);
+            // 如果目标为基线且已接近基线，移除 .show
+            if (parseFloat(f.dataset.h) <= parseFloat(f.dataset.base) + 0.1) {
+                f.classList.remove('show');
+            }
         });
-        requestAnimationFrame(animate);
     }
-    animate();
+    requestAnimationFrame(animate);
 }
 
 // 初始化
@@ -899,12 +1018,26 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('CW发报器初始化...');
     
     // 检查必要的API支持
-    if (typeof window.AudioContext !== 'undefined' || typeof window.webkitAudioContext !== 'undefined') {
+    if (typeof window.AudioContext !== 'undefined' || typeof window.webkitAudioContext !== 'undefined') {     
+        startShortwaveSpectrum();
+        // 启动频谱动画（较低振幅、较慢变化）
+        animate();
         window.cwTransmitter = new CWTransmitter();
+
+        // 全局键盘监听：按任意键会触发中间前景柱短暂响应
+        document.addEventListener('keydown', (e) => {
+            if (window.cwTransmitter) {
+                window.cwTransmitter.raiseForegroundBars();
+                // 自动恢复（raiseForegroundBars 内也有恢复逻辑，但这里更短）
+                setTimeout(() => {
+                    window.cwTransmitter.lowerForegroundBars();
+                }, 300);
+            }
+        });
+
         console.log('CW发报器初始化完成');
     } else {
         console.error('Web Audio API 不支持');
         alert('您的浏览器不支持Web Audio API，音频功能将无法使用。');
     }
-    startShortwaveSpectrum();
 });

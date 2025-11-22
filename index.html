@@ -365,52 +365,68 @@
                 }
             }
         }
-        /* 频谱竖线 */
+        /* ===== 频谱容器 ===== */
+        .spectrum-top {
+            position: relative;
+            height: 100px;
+            background: linear-gradient(180deg, #0a0a0a 0%, #1a1a1a 100%);
+            border: 2px solid #444;
+            border-bottom: none;
+            border-radius: 8px 8px 0 0;
+            overflow: hidden;
+        }
+
+        .spectrum-bg,
+        .spectrum-fg {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+
+        .spectrum-bg {
+            z-index: 1; /* 底噪在后 */
+        }
+        .spectrum-fg {
+            z-index: 2; /* 前景在前 */
+            opacity: 1; /* 允许前景柱子可见，柱子本身通过 .fg-bar 控制显示 */
+            /* 关键：不要写 background，保持完全透明 */
+        }
+
+        /* 底噪柱子 = 必须可见 */
         .spectrum-bar {
             position: absolute;
             bottom: 0;
             width: 4px;
-            background: linear-gradient(to top, #ff9d00 0%, #00fbff 50%, #ffffff 100%);
+            background: linear-gradient(to top, #00fbff 0%, #00ff00 50%, #ffffff 100%);
             box-shadow: 0 0 4px #00ff00, 0 0 8px #00ff00;
             transition: height 0.08s ease-out;
-        }
-        /* 余辉淡出 */
-        .spectrum-bar::after {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: #00ff00;
-            opacity: 0.6;
-            animation: afterglow 0.5s ease-out forwards;
-        }
-        @keyframes afterglow {
-            to { opacity: 0; transform: translateY(-10px); }
+            opacity: 1; /* 确保可见 */
         }
 
-        /* ===== 上半部分 ===== */
-        .spectrum-top{
-            height:100px;
-            background:linear-gradient(180deg,#0a0a0a 0%,#1a1a1a 100%);
-            border:2px solid #444;
-            border-bottom:none;
-            border-radius:8px 8px 0 0;
-            position:relative;
-            overflow:hidden;
+        /* 前景柱子 = 默认隐身，中间通过 .show 打开*/ 
+        .fg-bar {
+            position: absolute;
+            bottom: 0;
+            width: 4px;
+            height: 0;
+            background: linear-gradient(to top, #ff9d00 0%, #ffea00 50%, #fff 100%);
+            box-shadow: 0 0 12px #ffea00, 0 0 20px #ff9d00;
+            transition: height 0.08s ease-out;
+            opacity: 0;
+            z-index: 4; /* 确保前景柱在最上层 */
         }
-        .top-bars{
-            position:absolute;
-            bottom:4px; left:50%;
-            transform:translateX(-50%);
-            display:flex; gap:2px; align-items:flex-end;
+        .fg-bar.show {
+            opacity: 1;
         }
-        .spectrum-top .cw-response-bar{
-            width:4px; height:5%;
-            background:linear-gradient(to top, #ff9d00 0%, #00fbff 50%, #fff 100%);
-            box-shadow:0 0 4px #00ff00,0 0 8px #00ff00;
-            transition:height .4s ease-out;
+
+        /* 发射束容器 = 完全透明，只负责摆位 */
+        .cluster-8 {
+            position: absolute;
+            inset: 0;                          /* 铺满顶层 */
+            z-index: 3;
+            pointer-events: none;
+            /* 之前这里有中间挖空遮罩，会导致中间柱子不可见，已移除 */
+            background: transparent;
         }
 
         /* ===== 下半部分 ===== */
@@ -428,9 +444,11 @@
             0%   { top:0; opacity:1; }
             100% { top:100px; opacity:0; }
         }
-        .spectrum-bottom .morse-symbol{
-            position:absolute; top:0;
-            animation:floatDown 2s ease-out forwards;
+
+        /* 不覆盖已有 .spectrum-bg 的定位，仅确保填满父容器 */
+        #spectrumBg {
+            position: absolute;
+            inset: 0;
         }
 
     </style>
@@ -518,6 +536,10 @@
                 
                 <!-- 上半部分：频谱柱（发射时隐藏） -->
                 <div id="spectrumTop" class="spectrum-top">
+                    <!-- 底噪层 -->
+                    <div id="spectrumBg" class="spectrum-bg"></div>
+                    <!-- 前景发射束（8 根） -->
+                    <div id="spectrumFg" class="spectrum-fg cluster-8"></div>
                 </div>
 
                 <!-- 下半部分：点划动画（从上往下） -->
