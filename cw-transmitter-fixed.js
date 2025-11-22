@@ -324,24 +324,23 @@ class CWTransmitter {
         const bars = Array.from(document.querySelectorAll('.fg-bar'));
         if (bars.length === 0) return;
         const total = bars.length;
-        // 中心索引（默认居中触发）
         const center = Math.floor(total / 2);
-        // 山峰分布参数（sigma 控制宽度） — 减小 sigma 使峰更陡峭
-        const sigma = Math.max(0.6, total / 20);
-        const maxH = 80; // 峰值高度（%）
-        // 根据类型设置回落系数：点（dot）回落更快 -> decay 更小；划（dash）回落更慢 -> decay 更接近 1
-        const decayForType = type === 'dot' ? 0.84 : 0.96;
-        // 为每根柱子计算高斯形目标高度
-        bars.forEach((b, i) => {
-            const x = i - center;
-            // 高斯函数 A * exp(-(x^2)/(2*sigma^2))
-            const peak = maxH * Math.exp(-(x * x) / (2 * sigma * sigma));
+        // 只让中间三根柱子被激发，移除高斯分布
+        const indices = [center - 1, center, center + 1].filter(i => i >= 0 && i < total);
+        // 峰值高度相同（发射功率相同），只在回落速度上区分点/划
+        const peakForType = 75; // 所有符号的峰值高度相同
+        const decayForType = type === 'dot' ? 0.80 : 0.96; // dot 更快回落
+
+        indices.forEach((idx) => {
+            const b = bars[idx];
+            if (!b) return;
             const base = parseFloat(b.dataset.base || '4');
-            const target = Math.max(base, peak);
+            // 三根柱子高度更接近，使用小幅随机差异
+            const variance = 2; // +/-2%
+            const noise = (Math.random() * 2 - 1) * (variance / 100) * peakForType;
+            const target = Math.max(base, peakForType + noise);
             b.dataset.target = String(target);
-            // 回落系数由类型控制，存储在 dataset 中供 animate() 使用
             b.dataset.decay = String(decayForType);
-            // 立即显示为目标（速升），class 控制视觉效果
             b.classList.add('show');
         });
     }
@@ -357,12 +356,8 @@ class CWTransmitter {
         const bottomSpectrum = document.getElementById('spectrumBottom');
         const placeholder    = document.getElementById('spectrumPlaceholder');
 
-        /* 1. 只拉高前景8根，底噪继续刷新 */
-        // 根据类型触发前景柱（type: 'dot' 或 'dash'）
-        this.raiseForegroundBars(type);
-        // 点回落更快，划回落慢一点
-        const lowerDelay = type === 'dot' ? 200 : 800;
-        setTimeout(() => this.lowerForegroundBars(), lowerDelay);
+        /* 频谱显示由声音事件触发：playTone 会在开始时调用 raiseForegroundBars(type)，
+           在结束时触发 lowerForegroundBars()，因此这里不直接控制前景柱。 */
 
         /* 2. 隐藏占位文字 */
         if (placeholder) placeholder.style.display = 'none';
@@ -380,46 +375,63 @@ class CWTransmitter {
         if (!this.audioContext) return;
         
         const duration = symbol === '.' ? 100 : 300;
-        this.playTone(duration, this.frequency);
+        // 将 symbol 传入 playTone，使声音事件驱动频谱激发
+        this.playTone(duration, this.frequency, symbol);
     }
     
-    async playTone(duration, frequency) {
-    if (!this.audioContext || !this.soundEnabled) return;
+    async playTone(duration, frequency, symbol = '.') {
+        if (!this.audioContext || !this.soundEnabled) return;
 
-    return new Promise((resolve) => {
-        const osc   = this.audioContext.createOscillator();
-        const gain  = this.audioContext.createGain();
-        const filter = this.audioContext.createBiquadFilter(); // ← 新增
+        return new Promise((resolve) => {
+            const osc   = this.audioContext.createOscillator();
+            const gain  = this.audioContext.createGain();
+            const filter = this.audioContext.createBiquadFilter(); // ← 新增
 
-        // ① 方波源
-        osc.type = 'square';
-        osc.frequency.setValueAtTime(600, this.audioContext.currentTime);
+            // ① 方波源
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(600, this.audioContext.currentTime);
 
-        // ② 低通滤波：截止频率 1 kHz，Q 值 0.7（柔和滚降）
-        filter.type = 'lowpass';
-        filter.frequency.setValueAtTime(1000, this.audioContext.currentTime);
-        filter.Q.setValueAtTime(0.7, this.audioContext.currentTime);
+            // ② 低通滤波：截止频率 1 kHz，Q 值 0.7（柔和滚降）
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(1000, this.audioContext.currentTime);
+            filter.Q.setValueAtTime(0.7, this.audioContext.currentTime);
 
-        // ③ 2 ms 淡入/淡出，消除爆音
-        const vol   = Number(this.volume) || 0.7;
-        const time  = Number(this.audioContext.currentTime) || 0;
-        const dur   = Number(duration) || 100;
+            // ③ 2 ms 淡入/淡出，消除爆音
+            const vol   = Number(this.volume) || 0.7;
+            const time  = Number(this.audioContext.currentTime) || 0;
+            const dur   = Number(duration) || 100;
 
-        gain.gain.setValueAtTime(0, time);
-        gain.gain.linearRampToValueAtTime(vol * 0.1, time + 0.002);
-        gain.gain.setValueAtTime(vol * 0.1, time + dur / 1000 - 0.002);
-        gain.gain.linearRampToValueAtTime(0, time + dur / 1000);
+            gain.gain.setValueAtTime(0, time);
+            gain.gain.linearRampToValueAtTime(vol * 0.1, time + 0.002);
+            gain.gain.setValueAtTime(vol * 0.1, time + dur / 1000 - 0.002);
+            gain.gain.linearRampToValueAtTime(0, time + dur / 1000);
 
-        // ④ 连接顺序：osc → filter → gain → 扬声器
-        osc.connect(filter);
-        filter.connect(gain);
-        gain.connect(this.audioContext.destination);
+            // ④ 连接顺序：osc → filter → gain → 扬声器
+            osc.connect(filter);
+            filter.connect(gain);
+            gain.connect(this.audioContext.destination);
 
-        osc.start(time);
-        osc.stop(time + dur / 1000);
-        osc.onended = () => resolve();
-    });
-}
+            // 在声音开始时触发频谱前景（根据符号类型）
+            const type = symbol === '-' ? 'dash' : 'dot';
+            try {
+                this.raiseForegroundBars(type);
+            } catch (e) {
+                // 忽略：有时在初始化早期 this 可能未完整绑定
+            }
+
+            osc.start(time);
+            osc.stop(time + dur / 1000);
+            osc.onended = () => {
+                // 声音结束后开始降低前景（通过 lowerForegroundBars 将 target 设回基线）
+                try {
+                    // 点稍早触发回落，划延迟更长
+                    const lowerDelay = type === 'dot' ? 50 : 150;
+                    setTimeout(() => this.lowerForegroundBars(), lowerDelay);
+                } catch (e) {}
+                resolve();
+            };
+        });
+    }
     
     processSendBuffer() {
         if (this.sendBuffer.length === 0) return;
@@ -603,7 +615,7 @@ class CWTransmitter {
     // 接收功能
     updateSpeed(value) {
         this.currentSpeed = parseInt(value);
-        this.dropDuration = Math.round(9000 / this.currentSpeed);   
+        this.dropDuration = Math.round(16000 / this.currentSpeed);   
         const speedDisplay = document.getElementById('speedDisplay');
         if (speedDisplay) {
             speedDisplay.textContent = `${value} WPM`;
@@ -719,9 +731,9 @@ class CWTransmitter {
                 if (!this.isPlaying) break;
                 
                 if (symbol === '.') {
-                    await this.playTone(dotDuration);
+                    await this.playTone(dotDuration, undefined, '.');
                 } else if (symbol === '-') {
-                    await this.playTone(dashDuration);
+                    await this.playTone(dashDuration, undefined, '-');
                 }
                 
                 await this.sleep(dotDuration);
@@ -957,12 +969,17 @@ function startShortwaveSpectrum() {
     for (let i = 0; i < barCount; i++) {
         const bar = document.createElement('div');
         bar.className = 'spectrum-bar';
-        bar.style.left = `${(i / (barCount - 1)) * 100}%`;
+        const leftPct = `${(i / (barCount - 1)) * 100}%`;
+        bar.style.left = leftPct;
         bar.style.transform = 'translateX(-50%)';
         // 初始高度较低，使用 dataset 存储当前高度用于平滑动画
         const init = 5 + Math.random() * 6; // 5% ~ 11% 低噪声
         bar.style.height = `${init}%`;
         bar.dataset.h = String(init);
+        // 抖动系数（用于让不同柱子抖动差异化）
+        bar.dataset.jitter = String(0.8 + Math.random() * 1.2); // 0.8 ~ 2.0
+        // 记录 left 以便前景柱能对齐
+        bar.setAttribute('data-left', leftPct);
         bg.appendChild(bar);
     }
 }
@@ -973,13 +990,26 @@ function animate() {
     const bars = bg.querySelectorAll('.spectrum-bar');
     if (bars.length === 0) return;
     bars.forEach(b => {
-        // 目标高度：基线附近小幅随机抖动（降低噪声幅度）
+        // 目标高度：基线附近小幅随机抖动，但允许偶发突发以模拟真实短波底噪
         const base = 4; // 基线高度 4%
-        const variance = 6; // 波动 +/-6%
-        const target = base + Math.random() * variance;
+        const variance = 6; // 最大波动幅度
+        const jitter = parseFloat(b.dataset.jitter) || 1;
+        let target;
+        // 小概率突发（根据 jitter 增强突发概率）
+        if (Math.random() < 0.06 * Math.min(2, jitter)) {
+            // 突发趋近于上限
+            target = base + variance * (0.6 + Math.random() * 0.4);
+        } else if (Math.random() < 0.04 * Math.min(2, jitter)) {
+            // 偶发下陷
+            target = base + variance * (0.05 + Math.random() * 0.15);
+        } else {
+            // 常规抖动
+            target = base + Math.random() * variance;
+        }
         const current = parseFloat(b.dataset.h || b.style.height.replace('%','')) || base;
-        // 平滑插值向目标靠近
-        const next = current + (target - current) * 0.08;
+        // 使用与 jitter 相关的插值因子，让某些柱子更“活跃”
+        const alpha = Math.min(0.7, 0.06 + jitter * 0.28); // 0.06..0.64
+        const next = current + (target - current) * alpha;
         b.style.height = `${next.toFixed(2)}%`;
         b.dataset.h = String(next);
     });
@@ -1024,16 +1054,8 @@ document.addEventListener('DOMContentLoaded', function() {
         animate();
         window.cwTransmitter = new CWTransmitter();
 
-        // 全局键盘监听：按任意键会触发中间前景柱短暂响应
-        document.addEventListener('keydown', (e) => {
-            if (window.cwTransmitter) {
-                window.cwTransmitter.raiseForegroundBars();
-                // 自动恢复（raiseForegroundBars 内也有恢复逻辑，但这里更短）
-                setTimeout(() => {
-                    window.cwTransmitter.lowerForegroundBars();
-                }, 300);
-            }
-        });
+        // 频谱激发由声音事件驱动（playTone 内会调用 raiseForegroundBars），
+        // 因此不再绑定全局键盘触发。
 
         console.log('CW发报器初始化完成');
     } else {
